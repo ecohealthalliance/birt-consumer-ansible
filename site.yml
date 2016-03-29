@@ -1,0 +1,74 @@
+---
+- hosts: localhost
+  vars:
+    - instance_size: "m3.large"
+    - aws_security_group: birt-dev-db
+    - aws_instance_key_name: grits-prod
+    - instance_name: birt-dev-database
+  tasks:
+    - name: Install Python PIP
+      apt: pkg=python-pip state=latest
+      tags:
+        - always
+      ignore_errors: yes
+    - name: Install boto via PIP
+      pip: name=boto state=latest
+      tags:
+        - always
+    - name: Install AWS CLI
+      pip: name=awscli state=latest
+      tags:
+        - always
+    - name: Provision an AWS instance
+      ec2:
+        aws_access_key: "{{ ec2_access_key }}"
+        aws_secret_key: "{{ ec2_secret_key }}"
+        group: "{{ aws_security_group }}"
+        region: "us-east-1"
+        key_name: "{{ aws_instance_key_name }}"
+        instance_type: "{{ instance_size }}"
+        # Ubuntu 14.04 AWS stock image
+        image: "ami-d05e75b8"
+        wait: true
+        # The count prevents more than 1 instances from running at once.
+        exact_count: 1
+        count_tag:
+          Name: "{{ instance_name }}"
+        instance_tags:
+          Name: "{{ instance_name }}"
+        volumes:
+         - device_name: /dev/sda1
+           device_type: gp2
+           volume_size: 100
+           delete_on_termination: true
+      register: ec2
+      tags:
+        - always
+    - name: Add all instance public IPs to host group
+      add_host: hostname="{{ item.public_ip }}" ansible_ssh_user="ubuntu" groups=ec2hosts
+      with_items: ec2.tagged_instances
+      tags:
+        - always
+    - name: Wait for the instances to boot by checking the ssh ports
+      wait_for: host={{item.public_ip}} port=22 delay=6 timeout=320 state=started
+      with_items: ec2.tagged_instances
+      tags:
+        - always
+  vars_files:
+    - my_secure.yml
+
+- hosts: ec2hosts
+  vars:
+    - home: "/home/ubuntu"
+      ebird_archive_name: "erd_us48_data_grouped_by_year_v5.0.tar.gz"
+  roles:
+    - role: mongo_mongod
+      mongod_datadir_prefix: "/data/"
+      mongod_replication: false
+      mongod_port: 2701
+      tags: ["mongo"]
+    - role: import_data
+      tags: ["import_data"]
+  sudo: yes
+  vars_files:
+    - my_secure.yml

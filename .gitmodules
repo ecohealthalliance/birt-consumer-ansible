@@ -1,0 +1,3 @@
+[submodule "birt-consumer"]
+	path = birt-consumer
+	url = git@github.com:ecohealthalliance/birt-consumer.git
