@@ -18,6 +18,7 @@
   with_items:
     - awscli
     - virtualenv
+    - pexpect
 
 - name: Create aws crendentials directory
   file: path={{home}}/.aws state=directory
@@ -56,16 +57,43 @@
 - name: Import bird sightings checklist data
   command: "{{home}}/birt-consumer-env/bin/python {{home}}/birt-consumer/birt_consume.py --type Checklist {{ item.path }}"
   with_items: checklist_files.files
+  #wait up to 1 day
+  async: 86400
+  poll: 0
+  register: checklist_async_results
 
-- name: Import bird sightings covariate data
+- name: Wait for import to finish
+  async_status:
+    jid: "{{item.ansible_job_id}}"
+  with_items: checklist_async_results.results
+  register: checklist_async_poll
+  until: checklist_async_poll.finished
+  #wait up to 1 day
+  retries: 144
+  delay: 600
+
+- name: Start import bird sightings covariate data
   command: "{{home}}/birt-consumer-env/bin/python {{home}}/birt-consumer/birt_consume.py --type Core {{ item.path }}"
   with_items: covariate_files.files
+  #wait up to 1 day
+  async: 86400
+  poll: 0
+  register: covariate_async_results
+
+- name: Wait for import to finish
+  async_status:
+    jid: "{{item.ansible_job_id}}"
+  with_items: covariate_async_results.results
+  register: covariate_async_poll
+  until: covariate_async_poll.finished
+  #wait up to 1 day
+  retries: 144
+  delay: 600
 
 - name: Create birt indexes
-  command: "{{home}}/birt-consumer-env/bin/python {{home}}/birt-consumer/birt_ensure_index.py"
-
-- name: Dump database
-  command: mongodump
-
-- name: Backup the database to S3
-  command: "aws s3 cp --recursive dump s3://birt-data/dump"
+  expect:
+    command: "{{home}}/birt-consumer-env/bin/python {{home}}/birt-consumer/birt_ensure_index.py"
+    responses:
+      # This will lock the database. Are you sure?
+      \[y/N\]: "Y"
+    timeout: 3000

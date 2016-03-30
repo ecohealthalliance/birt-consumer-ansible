@@ -60,15 +60,28 @@
 - hosts: ec2hosts
   vars:
     - home: "/home/ubuntu"
-      ebird_archive_name: "erd_us48_data_grouped_by_year_v5.0.tar.gz"
+    - ebird_archive_name: "erd_us48_data_grouped_by_year_v5.0.tar.gz"
+    - enable_remote_access: true
   roles:
-    - role: mongo_mongod
-      mongod_datadir_prefix: "/data/"
-      mongod_replication: false
-      mongod_port: 2701
+    - role: mongodb
+      # mongod_datadir_prefix: "/data/"
+      # mongod_replication: false
+      # mongod_port: 2701
       tags: ["mongo"]
     - role: import_data
       tags: ["import_data"]
+    - role: s3_backup
+      tags: ["s3_backup"]
+  post_tasks:
+    - name: Enable remote database access 
+      lineinfile: dest="/etc/mongod.conf" regexp="^bind_ip" line="bind_ip = {{ansible_eth0.ipv4.address}},127.0.0.1"
+      when: "{{enable_remote_access}} == true"
+      tags: ["enable_remote_access"]
+      register: mongo_config
+    - name: Restart mongo so config changes take effect
+      command: service mongod restart
+      when: mongo_config.changed
+      tags: ["enable_remote_access"]
   sudo: yes
   vars_files:
     - my_secure.yml
