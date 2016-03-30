@@ -1,6 +1,9 @@
 ---
 - name: Dump database
-  command: mongodump
+  command: mongodump --db birt
+
+- name: compress the database
+  command: tar -cvzf birt-db-dump.tar.gz dump
 
 - name: Backup the database to S3
-  command: "aws s3 cp --recursive dump s3://birt-data/dump"
+  command: "aws s3 cp --recursive birt-db-dump.tar.gz s3://birt-data/birt-db-dump.tar.gz"
